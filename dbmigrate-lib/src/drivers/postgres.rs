@@ -20,35 +20,39 @@ impl Postgres {
         pg.ensure_migration_table_exists();
         Ok(pg)
     }
+
+    pub fn schema() -> String {
+        ::std::env::var("DBMIGRATE_SCHEMA").unwrap_or("public".to_owned())
+    }
 }
 
 impl Driver for Postgres {
     fn ensure_migration_table_exists(&self) {
-        self.conn.batch_execute("
-            CREATE TABLE IF NOT EXISTS __dbmigrate_table(id INTEGER, current INTEGER);
-            INSERT INTO __dbmigrate_table (id, current)
+        self.conn.batch_execute(&format!("
+            CREATE TABLE IF NOT EXISTS {0}.__dbmigrate_table(id INTEGER, current INTEGER);
+            INSERT INTO {0}.__dbmigrate_table (id, current)
             SELECT 1, 0
-            WHERE NOT EXISTS(SELECT * FROM __dbmigrate_table WHERE id = 1);
-        ").unwrap();
+            WHERE NOT EXISTS(SELECT * FROM {0}.__dbmigrate_table WHERE id = 1);
+        ", &Self::schema())).unwrap();
     }
 
     fn remove_migration_table(&self) {
-        self.conn.execute("DROP TABLE __dbmigrate_table;", &[]).unwrap();
+        self.conn.execute(&format!("DROP TABLE {0}.__dbmigrate_table;", &Self::schema()), &[]).unwrap();
     }
 
     fn get_current_number(&self) -> i32 {
-        let stmt = self.conn.prepare("
-            SELECT current FROM __dbmigrate_table WHERE id = 1;
-        ").unwrap();
+        let stmt = self.conn.prepare(&format!("
+            SELECT current FROM {0}.__dbmigrate_table WHERE id = 1;
+        ", &Self::schema())).unwrap();
         let results = stmt.query(&[]).unwrap();
 
         results.get(0).get("current")
     }
 
     fn set_current_number(&self, number: i32) {
-        let stmt = self.conn.prepare(
-            "UPDATE __dbmigrate_table SET current = $1 WHERE id = 1;"
-        ).unwrap();
+        let stmt = self.conn.prepare(&format!(
+            "UPDATE {0}.__dbmigrate_table SET current = $1 WHERE id = 1;",
+        &Self::schema())).unwrap();
         stmt.execute(&[&number]).unwrap();
     }
 
